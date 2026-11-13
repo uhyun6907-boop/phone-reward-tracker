@@ -3,6 +3,7 @@
   'use strict';
 
   const KEY = 'phone-reward-tracker-v1';
+  const VERSION = 2;
   const HINT_KEY = 'phone-reward-tracker-hint-dismissed';
   const app = document.getElementById('app');
   const titleEl = document.getElementById('title');
@@ -31,21 +32,28 @@
   const pct = (a, b) => (b > 0 ? Math.min(100, Math.round((a / b) * 100)) : 0);
 
   /* ---------- seed ---------- */
-  function seedLine1() {
-    const groups = [
-      { id: 'g-membership', name: '멤버십 쿠폰', summary: '월 5,000원 × 24개월 (2026.11 ~ 2028.10)',
-        desc: '매월 1일 홈페이지 > 혜택 > 멤버십에서 받아 Npay로 등록', uncertain: false, cash: false, excludable: false, excluded: false },
+  // 2027년 7월 번호이동 예정 → 멤버십 쿠폰은 2026.11 ~ 2027.06 (8회)
+  const MEMBERSHIP_START = '2026-11';
+  const MEMBERSHIP_COUNT = 8;
+  const membershipItem = (i) => ({ id: uid(), groupId: 'g-membership', name: `멤버십 쿠폰 ${i + 1}/${MEMBERSHIP_COUNT}`, amount: 5000,
+    month: addMonths(MEMBERSHIP_START, i), when: '매월 1일', received: false });
+
+  function seedGroups() {
+    return [
+      { id: 'g-membership', name: '멤버십 쿠폰', summary: '월 5,000원 × 8회 (2026.11 ~ 2027.06)',
+        desc: '매월 1일 홈페이지 > 혜택 > 멤버십에서 받아 Npay로 등록 (2027년 7월 번호이동 예정 → 8회)', uncertain: false, cash: false, excludable: false, excluded: false },
       { id: 'g-npay', name: 'Npay 웰컴', summary: '50,000원 · 2027년 3월',
         desc: 'Npay 웰컴 혜택 50,000원 (2027년 3월 지급 예정)', uncertain: false, cash: false, excludable: false, excluded: false },
       { id: 'g-honey', name: '꿀머니', summary: '월 10,000원 × 6회 (2027.01 ~ 06 월말)',
-        desc: '응모 여부가 불확실 — 2027년 1월 말 입금이 없으면 꿀머니 전체 제외. 입금되면 현금전환까지 체크하세요.',
-        uncertain: true, cash: true, excludable: true, excluded: false }
+        desc: '응모 완료(고객센터 확인) — 2027년 1월부터 6회 월말 입금. 입금되면 현금전환까지 체크하세요.',
+        uncertain: false, cash: true, excludable: false, excluded: false }
     ];
+  }
+
+  function seedLine1() {
+    const groups = seedGroups();
     const items = [];
-    for (let i = 0; i < 24; i++) {
-      items.push({ id: uid(), groupId: 'g-membership', name: `멤버십 쿠폰 ${i + 1}/24`, amount: 5000,
-        month: addMonths('2026-11', i), when: '매월 1일', received: false });
-    }
+    for (let i = 0; i < MEMBERSHIP_COUNT; i++) items.push(membershipItem(i));
     items.push({ id: uid(), groupId: 'g-npay', name: 'Npay 웰컴', amount: 50000, month: '2027-03', when: '2027년 3월', received: false });
     for (let i = 0; i < 6; i++) {
       items.push({ id: uid(), groupId: 'g-honey', name: `꿀머니 ${i + 1}회차`, amount: 10000,
@@ -71,18 +79,61 @@
     };
   }
 
+  /* ---------- migration ---------- */
+  // 기본 그룹(g-membership / g-npay / g-honey)만 새 기본값으로 갱신. 사용자 회선·그룹·체크 기록은 유지.
+  function migrate(s) {
+    if ((Number(s.version) || 1) >= VERSION) return false;
+    const defs = Object.fromEntries(seedGroups().map((g) => [g.id, g]));
+    for (const line of s.lines) {
+      if (!line || !Array.isArray(line.groups) || !Array.isArray(line.items)) continue;
+      for (const g of line.groups) {
+        if (g.id === 'g-membership') {
+          const d = defs[g.id];
+          g.summary = d.summary; g.desc = d.desc;
+          const old = line.items.filter((i) => i.groupId === g.id);
+          const byMonth = new Map(old.map((i) => [i.month, i]));
+          const fresh = [];
+          for (let k = 0; k < MEMBERSHIP_COUNT; k++) {
+            const base = membershipItem(k);
+            const prev = byMonth.get(base.month);
+            // 남는 달은 체크 기록(received 등)과 id 유지, 이름만 n/8로
+            fresh.push(prev ? { ...prev, name: base.name } : base);
+          }
+          const firstIdx = line.items.findIndex((i) => i.groupId === g.id);
+          const rest = line.items.filter((i) => i.groupId !== g.id);
+          const at = firstIdx < 0 ? rest.length : line.items.slice(0, firstIdx).filter((i) => i.groupId !== g.id).length;
+          rest.splice(at, 0, ...fresh);
+          line.items = rest;
+        } else if (g.id === 'g-honey') {
+          const d = defs[g.id];
+          // 응모 완료(고객센터 확인) → 확정 포함. 항목·받음/현금전환 체크는 그대로.
+          Object.assign(g, { summary: d.summary, desc: d.desc, uncertain: false, excludable: false, excluded: false });
+        }
+        // g-npay: 변경 없음
+      }
+    }
+    s.version = VERSION;
+    return true;
+  }
+
   /* ---------- storage ---------- */
   function load() {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       try {
         const s = JSON.parse(raw);
-        if (s && Array.isArray(s.lines)) return s;
+        if (s && Array.isArray(s.lines)) {
+          if (migrate(s)) {
+            localStorage.setItem(KEY + '-pre-v' + VERSION, raw); // 이전 데이터 백업
+            localStorage.setItem(KEY, JSON.stringify(s));
+          }
+          return s;
+        }
       } catch (e) { /* fall through */ }
       // 손상된 데이터는 지우지 않고 백업해 둠
       localStorage.setItem(KEY + '-corrupt-' + Date.now(), raw);
     }
-    const s = { version: 1, lines: [seedLine1()] };
+    const s = { version: VERSION, lines: [seedLine1()] };
     localStorage.setItem(KEY, JSON.stringify(s));
     return s;
   }
@@ -106,7 +157,20 @@
       if (g.cash) { cashTotal += it.amount; if (it.cashed) cashed += it.amount; }
     }
     const hasExcluded = line.groups.some((g) => g.excluded);
-    return { confirmed, max, all, received, remaining: max - received, cashed, cashTotal, hasExcluded };
+    const months = planMonths(line);
+    const planCost = (Number(line.fee) || 0) * months;
+    return { confirmed, max, all, received, remaining: max - received, cashed, cashTotal, hasExcluded,
+      planMonths: months, planCost, net: confirmed - planCost };
+  }
+
+  // 요금 개월 수: 개통월 ~ 마지막 리워드 월 (포함). 예) 2026.11 ~ 2027.06 = 8개월
+  function planMonths(line) {
+    if (!line.openMonth) return 0;
+    const last = line.items.reduce((m, it) => (it.month && it.month > m ? it.month : m), '');
+    if (!last || last < line.openMonth) return 0;
+    const [y1, m1] = line.openMonth.split('-').map(Number);
+    const [y2, m2] = last.split('-').map(Number);
+    return (y2 - y1) * 12 + (m2 - m1) + 1;
   }
 
   function schedule(line) {
@@ -147,8 +211,8 @@
   function viewHome() {
     titleEl.textContent = '휴대폰 리워드 트래커';
     backBtn.hidden = true;
-    let sumRecv = 0, sumMax = 0, sumConf = 0;
-    state.lines.forEach((l) => { const t = totals(l); sumRecv += t.received; sumMax += t.max; sumConf += t.confirmed; });
+    let sumRecv = 0, sumMax = 0, sumConf = 0, sumCost = 0;
+    state.lines.forEach((l) => { const t = totals(l); sumRecv += t.received; sumMax += t.max; sumConf += t.confirmed; sumCost += t.planCost; });
 
     const hint = (!isStandalone() && !localStorage.getItem(HINT_KEY)) ? `
       <div class="hint">
@@ -175,6 +239,7 @@
             <div class="kv"><span>확정</span><b>${man(t.confirmed)}</b></div>
             <div class="kv"><span>최대</span><b>${man(t.max)}</b></div>
           </div>
+          ${t.planCost > 0 ? `<div class="profit-line">총 요금 <b>${won(t.planCost)}</b> · 순수익 <b class="${t.net < 0 ? 'neg' : 'ok'}">${man(t.net)}</b></div>` : ''}
           <div class="bar"><i style="width:${pct(t.received, t.max)}%"></i></div>
           ${nx ? `<div class="next">다음 입금: <b>${ymLabel(nx.month)} · ${won(nx.amount)}</b></div>` : (t.max > 0 ? '<div class="next">🎉 모든 리워드를 받았어요</div>' : '')}
         </a>`;
@@ -190,6 +255,7 @@
           <div><span class="label">남은 금액</span><b>${won(sumMax - sumRecv)}</b></div>
           <div><span class="label">확정 / 최대</span><b>${man(sumConf)} / ${man(sumMax)}</b></div>
         </div>
+        ${sumCost > 0 ? `<div class="hero-net">순수익 <b>${man(sumConf - sumCost)}</b> <span>(확정 − 총 요금 ${won(sumCost)})</span></div>` : ''}
       </section>
       <div class="section-title">내 회선</div>
       ${cards || '<div class="card empty">등록된 회선이 없어요.<br>아래 버튼으로 회선을 추가하세요.</div>'}
@@ -301,6 +367,8 @@
           <div class="total"><span>최대</span><b>${man(t.max)}</b><small>${won(t.max)}</small></div>
           <div class="total received"><span>받은 금액</span><b>${won(t.received)}</b><small>${pct(t.received, t.max)}%</small></div>
           <div class="total remaining"><span>남은 금액</span><b>${won(t.remaining)}</b><small>미수령</small></div>
+          ${t.planCost > 0 ? `<div class="total cost"><span>총 요금</span><b>${won(t.planCost)}</b><small>${won(line.fee)} × ${t.planMonths}개월</small></div>
+          <div class="total net ${t.net < 0 ? 'neg' : ''}"><span>순수익</span><b>${man(t.net)}</b><small>확정 − 총 요금</small></div>` : ''}
           ${t.cashTotal > 0 ? `<div class="total wide"><span>현금전환 완료</span><b>${won(t.cashed)} / ${won(t.cashTotal)}</b></div>` : ''}
         </div>
         <div class="bar"><i style="width:${pct(t.received, t.max)}%"></i></div>
@@ -464,6 +532,7 @@
         const s = JSON.parse(await f.text());
         if (!s || !Array.isArray(s.lines)) throw new Error('bad');
         if (!confirm('현재 데이터를 백업 파일로 덮어쓸까요?')) return;
+        migrate(s);
         state = s; save(); render(); toast('가져오기 완료');
       } catch (e) { toast('올바른 백업 파일이 아니에요'); }
     };

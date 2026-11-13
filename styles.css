@@ -282,3 +282,13 @@ details.group.excluded > summary .gtitle b { text-decoration: line-through; colo
   background: rgba(20,24,34,.92); color: #fff; padding: 10px 16px; border-radius: 12px; font-size: 14px; z-index: 50;
   opacity: 0; transition: opacity .2s; pointer-events: none; }
 .toast.show { opacity: 1; }
+
+/* 총 요금 / 순수익 */
+.hero-net { margin-top: 10px; font-size: 13px; opacity: .95; }
+.hero-net b { font-size: 16px; }
+.hero-net span { opacity: .8; font-size: 12px; }
+.profit-line { margin-top: 8px; font-size: 13px; color: var(--sub); }
+.profit-line b { color: var(--text); }
+.profit-line b.ok { color: var(--ok); }
+.profit-line b.neg, .total.net.neg b { color: var(--danger); }
+.total.net b { color: var(--ok); }
