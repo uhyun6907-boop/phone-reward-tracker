@@ -9,7 +9,6 @@
   const titleEl = document.getElementById('title');
   const backBtn = document.getElementById('backBtn');
 
-  /* ---------- utils ---------- */
   const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const won = (n) => `${Math.round(n || 0).toLocaleString('ko-KR')}원`;
@@ -26,19 +25,17 @@
     m = (((m - 1) % 12) + 12) % 12 + 1;
     return `${y}-${String(m).padStart(2, '0')}`;
   };
-  const ymLabel = (ym) => (ym ? ym.replace('-', '.') : '-');
-  const ymKo = (ym) => { if (!ym) return '-'; const [y, m] = ym.split('-'); return `${y}년 ${Number(m)}월`; };
+  const ymLabel = (ym) => (ym ? esc(String(ym).replace('-', '.')) : '-');
+  const ymKo = (ym) => { if (!ym) return '-'; const [y, m] = String(ym).split('-'); return `${esc(y)}년 ${Number(m)}월`; };
   const nowYM = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
   const pct = (a, b) => (b > 0 ? Math.min(100, Math.round((a / b) * 100)) : 0);
 
-  /* ---------- seed ---------- */
-  // 2027년 7월 번호이동 예정 → 멤버십 쿠폰은 2026.11 ~ 2027.06 (8회)
   const MEMBERSHIP_START = '2026-11';
   const MEMBERSHIP_COUNT = 8;
   const membershipItem = (i) => ({ id: uid(), groupId: 'g-membership', name: `멤버십 쿠폰 ${i + 1}/${MEMBERSHIP_COUNT}`, amount: 5000,
     month: addMonths(MEMBERSHIP_START, i), when: '매월 1일', received: false });
 
-  function seedGroups() {
+  function v2GroupDefaults() {
     return [
       { id: 'g-membership', name: '멤버십 쿠폰', summary: '월 5,000원 × 8회 (2026.11 ~ 2027.06)',
         desc: '매월 1일 홈페이지 > 혜택 > 멤버십에서 받아 Npay로 등록 (2027년 7월 번호이동 예정 → 8회)', uncertain: false, cash: false, excludable: false, excluded: false },
@@ -50,94 +47,17 @@
     ];
   }
 
-  function seedLine1() {
-    const groups = seedGroups();
-    const items = [];
-    for (let i = 0; i < MEMBERSHIP_COUNT; i++) items.push(membershipItem(i));
-    items.push({ id: uid(), groupId: 'g-npay', name: 'Npay 웰컴', amount: 50000, month: '2027-03', when: '2027년 3월', received: false });
-    for (let i = 0; i < 6; i++) {
-      items.push({ id: uid(), groupId: 'g-honey', name: `꿀머니 ${i + 1}회차`, amount: 10000,
-        month: addMonths('2027-01', i), when: '월 말', received: false, cashed: false });
-    }
-    return {
-      id: 'line-1',
-      number: '010-7913-6907',
-      carrier: '우리WON모바일',
-      openMonth: '2026-11',
-      openNote: '친구추천',
-      plan: '우리WON LTE 500MB/50분',
-      fee: 2100,
-      feeDiscount: 1000,
-      memo: '',
-      cautions: [
-        '마케팅·SMS 동의 및 우리WON멤버스 유지',
-        '요금제 변경·정지·번호이동 금지',
-        '번호이동은 2027년 7월 1일 이후 (6번째 꿀머니 확인 뒤)'
-      ],
-      groups,
-      items
-    };
-  }
-
-  // 쉐이크모바일 (블프 전야제 이벤트, 체감가 0원) — 요금·지급 시기는 개통 후 편집에서 확인/수정
-  const SHAKE_LINE_ID = 'line-2-shake';
-  const SHAKE_START = '2026-12';
-  const SHAKE_NPAY_COUNT = 7;
-  function seedLine2() {
-    const groups = [
-      { id: 'g-shake-npay', name: 'Npay 매월 5,000P', summary: `월 5,000원 × ${SHAKE_NPAY_COUNT}회 (2026.12 ~ 2027.06)`,
-        desc: '요금제 가입일부터 30일 사용 후 31일차에 MMS 발송, 이후 30일마다 1회 (평생). 수신 후 30일 안에 네이버 앱/웹에서 등록해야 함 — 미등록 시 소멸.',
-        uncertain: false, cash: false, excludable: false, excluded: false },
-      { id: 'g-shake-open', name: '바로유심 상품권', summary: '10,000원 × 2회 (2027.03 · 2027.06 월말)',
-        desc: 'KT바로배송/바로유심으로 2026.11.30까지 개통 시 — 1차 개통 M+4개월차, 2차 M+7개월차 월말 MMS. 3대 마트 또는 네이버페이 상품권, 수신 후 30일 안에 등록.',
-        uncertain: true, cash: false, excludable: true, excluded: false }
-    ];
-    const items = [];
-    for (let i = 0; i < SHAKE_NPAY_COUNT; i++) {
-      items.push({ id: uid(), groupId: 'g-shake-npay', name: `Npay 5,000P ${i + 1}/${SHAKE_NPAY_COUNT}`, amount: 5000,
-        month: addMonths(SHAKE_START, i), when: '개통 31일차부터 30일마다 (MMS)', received: false });
-    }
-    items.push({ id: uid(), groupId: 'g-shake-open', name: '바로유심 상품권 1차', amount: 10000, month: '2027-03',
-      when: '개통 M+4개월차 월말', received: false });
-    items.push({ id: uid(), groupId: 'g-shake-open', name: '바로유심 상품권 2차', amount: 10000, month: '2027-06',
-      when: '개통 M+7개월차 월말', received: false });
-    return {
-      id: SHAKE_LINE_ID,
-      number: '010-5000-6907',
-      carrier: '쉐이크모바일 (KT망)',
-      openMonth: '2026-11',
-      openNote: '블프 전야제 이벤트 (체감가 0원)',
-      plan: '쉐이크딜 LTE 100GB+_Npay 5,000원 (120GB+5Mbps 무제한)',
-      fee: 0,
-      feeDiscount: 0,
-      memo: '정가 47,300원. 실제 청구 요금은 개통 후 편집에서 입력. 팝테일 월 1,000원 할인(24개월): 개통 1일 후 코드 문자 → 개통 익익월 말일까지 팝테일 앱에서 등록. 데이터쿠폰 20GB: M+3·M+6·M+9개월차 10일 이내. SOLO 결합 시 월 20GB.',
-      cautions: [
-        '리워드 다 받을 때까지(2027.06) 요금제 변경·정지·해지·명의변경 금지',
-        '쿠폰 MMS 받으면 30일 안에 등록 (미등록 시 소멸, 재발급 불가)',
-        '팝테일 프로모션 코드는 개통 익익월 말일(2027.01.31)까지 등록',
-        '7개월 할인 이후 요금 확인 · 실제 월 요금은 편집에서 입력'
-      ],
-      groups,
-      items
-    };
-  }
-
-  /* ---------- migration ---------- */
-  // v2: 기본 그룹(g-membership / g-npay / g-honey)만 새 기본값으로 갱신. 사용자 회선·그룹·체크 기록은 유지.
-  // v3: 쉐이크모바일 회선이 없으면 추가.
   function migrate(s) {
     const from = Number(s.version) || 1;
     if (from >= VERSION) return false;
     if (from < 2) migrateV2(s);
-    if (from < 3 && !s.lines.some((l) => l && l.id === SHAKE_LINE_ID)) s.lines.push(seedLine2());
     s.version = VERSION;
     return true;
   }
 
   function migrateV2(s) {
-    const defs = Object.fromEntries(seedGroups().map((g) => [g.id, g]));
+    const defs = Object.fromEntries(v2GroupDefaults().map((g) => [g.id, g]));
     for (const line of s.lines) {
-      if (!line || !Array.isArray(line.groups) || !Array.isArray(line.items)) continue;
       for (const g of line.groups) {
         if (g.id === 'g-membership') {
           const d = defs[g.id];
@@ -148,7 +68,6 @@
           for (let k = 0; k < MEMBERSHIP_COUNT; k++) {
             const base = membershipItem(k);
             const prev = byMonth.get(base.month);
-            // 남는 달은 체크 기록(received 등)과 id 유지, 이름만 n/8로
             fresh.push(prev ? { ...prev, name: base.name } : base);
           }
           const firstIdx = line.items.findIndex((i) => i.groupId === g.id);
@@ -158,49 +77,50 @@
           line.items = rest;
         } else if (g.id === 'g-honey') {
           const d = defs[g.id];
-          // 응모 완료(고객센터 확인) → 확정 포함. 항목·받음/현금전환 체크는 그대로.
           Object.assign(g, { summary: d.summary, desc: d.desc, uncertain: false, excludable: false, excluded: false });
         }
-        // g-npay: 변경 없음
       }
     }
   }
 
-  /* ---------- storage ---------- */
-  function load() {
-    const raw = localStorage.getItem(KEY);
-    if (raw) {
-      try {
-        const s = JSON.parse(raw);
-        if (s && Array.isArray(s.lines)) {
-          if (migrate(s)) {
-            localStorage.setItem(KEY + '-pre-v' + VERSION, raw); // 이전 데이터 백업
-            localStorage.setItem(KEY, JSON.stringify(s));
-          }
-          return s;
-        }
-      } catch (e) { /* fall through */ }
-      // 손상된 데이터는 지우지 않고 백업해 둠
-      localStorage.setItem(KEY + '-corrupt-' + Date.now(), raw);
-    }
-    const s = { version: VERSION, lines: [seedLine1(), seedLine2()] };
+  const isObjWithId = (x) => x && typeof x === 'object' && typeof x.id === 'string';
+  const isLine = (l) => isObjWithId(l) && Array.isArray(l.groups) && Array.isArray(l.items) &&
+    l.groups.every(isObjWithId) && l.items.every(isObjWithId);
+
+  function parseState(raw) {
+    const s = JSON.parse(raw);
+    if (!s || !Array.isArray(s.lines) || !s.lines.every(isLine)) throw new Error('회선 데이터 형식이 아님');
+    return { s, migrated: migrate(s) };
+  }
+
+  function commit(raw, { s, migrated }) {
+    if (migrated) localStorage.setItem(`${KEY}-pre-v${VERSION}-${Date.now()}`, raw);
     localStorage.setItem(KEY, JSON.stringify(s));
     return s;
+  }
+
+  function load() {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return { version: VERSION, lines: [] };
+    let parsed;
+    try { parsed = parseState(raw); } catch (e) {
+      localStorage.setItem(`${KEY}-corrupt-${Date.now()}`, raw);
+      return { version: VERSION, lines: [] };
+    }
+    return commit(raw, parsed);
   }
   let state = load();
   const save = () => localStorage.setItem(KEY, JSON.stringify(state));
   const findLine = (id) => state.lines.find((l) => l.id === id);
 
-  /* ---------- calculations ---------- */
   const groupOf = (line, item) => line.groups.find((g) => g.id === item.groupId) || {};
   const activeItems = (line) => line.items.filter((it) => !groupOf(line, it).excluded);
 
   function totals(line) {
     let confirmed = 0, max = 0, received = 0, cashed = 0, cashTotal = 0, all = 0;
-    for (const it of line.items) {
+    for (const it of line.items) all += it.amount;
+    for (const it of activeItems(line)) {
       const g = groupOf(line, it);
-      all += it.amount;
-      if (g.excluded) continue;
       max += it.amount;
       if (!g.uncertain) confirmed += it.amount;
       if (it.received) received += it.amount;
@@ -213,10 +133,9 @@
       planMonths: months, planCost, net: confirmed - planCost };
   }
 
-  // 요금 개월 수: 개통월 ~ 마지막 리워드 월 (포함). 예) 2026.11 ~ 2027.06 = 8개월
   function planMonths(line) {
     if (!line.openMonth) return 0;
-    const last = line.items.reduce((m, it) => (it.month && it.month > m ? it.month : m), '');
+    const last = activeItems(line).reduce((m, it) => (it.month && it.month > m ? it.month : m), '');
     if (!last || last < line.openMonth) return 0;
     const [y1, m1] = line.openMonth.split('-').map(Number);
     const [y2, m2] = last.split('-').map(Number);
@@ -329,7 +248,6 @@
     const t = totals(line);
     const cur = nowYM();
 
-    // 일정
     const rows = schedule(line);
     const firstOpen = Math.max(0, rows.findIndex((r) => r.month >= cur || r.got < r.total));
     const LIMIT = 9;
@@ -355,7 +273,6 @@
     const moreBtn = rows.length > visible.length || showAllSchedule
       ? `<button class="btn ghost small sched-more" type="button" data-act="toggle-sched">${showAllSchedule ? '접기' : `전체 ${rows.length}개월 보기 (${ymLabel(rows[rows.length - 1].month)}까지)`}</button>` : '';
 
-    // 리워드 그룹
     const groupsHtml = line.groups.map((g) => {
       const its = line.items.filter((i) => i.groupId === g.id);
       if (!its.length) return '';
@@ -367,14 +284,15 @@
         <div class="item ${it.received ? 'got' : ''}">
           <div class="iname"><b>${esc(it.name)}</b><span>${ymLabel(it.month)}${it.when ? ' · ' + esc(it.when) : ''} · ${won(it.amount)}</span></div>
           <div class="checks">
-            <label class="chk"><input type="checkbox" data-act="recv" data-item="${it.id}" ${it.received ? 'checked' : ''} ${g.excluded ? 'disabled' : ''}><em>받음</em></label>
-            ${g.cash ? `<label class="chk cash"><input type="checkbox" data-act="cash" data-item="${it.id}" ${it.cashed ? 'checked' : ''} ${g.excluded ? 'disabled' : ''}><em>현금전환</em></label>` : ''}
+            <label class="chk"><input type="checkbox" data-act="recv" data-item="${esc(it.id)}" ${it.received ? 'checked' : ''} ${g.excluded ? 'disabled' : ''}><em>받음</em></label>
+            ${g.cash ? `<label class="chk cash"><input type="checkbox" data-act="cash" data-item="${esc(it.id)}" ${it.cashed ? 'checked' : ''} ${g.excluded ? 'disabled' : ''}><em>현금전환</em></label>` : ''}
           </div>
         </div>`).join('');
+      const firstMonth = its.reduce((m, i) => (i.month && (!m || i.month < m) ? i.month : m), '');
       const exclude = g.excludable ? `
         <label class="switch-row">
-          <p><b>1월 말 입금 없음 → ${esc(g.name)} 전체 제외</b>켜면 합계·월별 일정에서 빠집니다.</p>
-          <input class="switch" type="checkbox" data-act="exclude" data-group="${g.id}" ${g.excluded ? 'checked' : ''}>
+          <p><b>${firstMonth ? `${ymKo(firstMonth)} 첫 입금이 없으면 → ` : ''}${esc(g.name)} 전체 제외</b>켜면 합계·월별 일정에서 빠집니다.</p>
+          <input class="switch" type="checkbox" data-act="exclude" data-group="${esc(g.id)}" ${g.excluded ? 'checked' : ''}>
         </label>` : '';
       return `
         <details class="group ${g.excluded ? 'excluded' : ''}" data-key="${esc(key)}" ${isOpen ? 'open' : ''}>
@@ -435,10 +353,11 @@
 
       <div class="btn-row" style="margin-top:20px">
         <a class="btn ghost" href="#/edit/${encodeURIComponent(line.id)}">편집</a>
-        <button class="btn danger" type="button" data-act="delete-line" data-line="${line.id}">삭제</button>
+        <button class="btn danger" type="button" data-act="delete-line" data-line="${esc(line.id)}">삭제</button>
       </div>`;
   }
 
+  const MAX_REPEAT = 60;
   function rewardDraftHtml() {
     return `
       <div class="reward-draft">
@@ -449,7 +368,7 @@
           <label class="field"><span>시작 월</span><input name="r-month" type="month" required></label>
         </div>
         <div class="grid2">
-          <label class="field"><span>반복 (개월 수)</span><input name="r-repeat" type="number" inputmode="numeric" min="1" max="60" value="1"></label>
+          <label class="field"><span>반복 (개월 수)</span><input name="r-repeat" type="number" inputmode="numeric" min="1" max="${MAX_REPEAT}" value="1"></label>
           <label class="field"><span>받는 방법 / 메모</span><input name="r-desc" placeholder="선택"></label>
         </div>
         <div class="flags">
@@ -469,7 +388,7 @@
     const existing = (v.groups || []).map((g) => {
       const its = v.items.filter((i) => i.groupId === g.id);
       const sum = its.reduce((s, i) => s + i.amount, 0);
-      return `<div class="existing" data-group="${g.id}">
+      return `<div class="existing" data-group="${esc(g.id)}">
           <div><b>${esc(g.name)}</b><span>${its.length}개 · ${won(sum)}</span></div>
           <button type="button" class="btn danger small" data-act="rm-group">삭제</button>
         </div>`;
@@ -480,12 +399,12 @@
         <section class="card">
           <h2>기본 정보</h2>
           <label class="field"><span>번호 *</span><input name="number" type="tel" inputmode="tel" placeholder="010-0000-0000" value="${esc(v.number)}" required></label>
-          <label class="field"><span>통신사</span><input name="carrier" placeholder="예: 우리WON모바일" value="${esc(v.carrier)}"></label>
+          <label class="field"><span>통신사</span><input name="carrier" placeholder="예: ○○모바일" value="${esc(v.carrier)}"></label>
           <div class="grid2">
             <label class="field"><span>개통월</span><input name="openMonth" type="month" value="${esc(v.openMonth)}"></label>
-            <label class="field"><span>개통 메모</span><input name="openNote" placeholder="예: 친구추천" value="${esc(v.openNote)}"></label>
+            <label class="field"><span>개통 메모</span><input name="openNote" placeholder="예: 이벤트 가입" value="${esc(v.openNote)}"></label>
           </div>
-          <label class="field"><span>요금제</span><input name="plan" placeholder="예: LTE 500MB/50분" value="${esc(v.plan)}"></label>
+          <label class="field"><span>요금제</span><input name="plan" placeholder="예: LTE 10GB" value="${esc(v.plan)}"></label>
           <div class="grid2">
             <label class="field"><span>월 요금(원)</span><input name="fee" type="number" inputmode="numeric" min="0" value="${esc(v.fee)}"></label>
             <label class="field"><span>할인 시 요금(원)</span><input name="feeDiscount" type="number" inputmode="numeric" min="0" placeholder="선택" value="${esc(v.feeDiscount)}"></label>
@@ -527,24 +446,26 @@
     line.memo = String(fd.get('memo') || '').trim();
     line.cautions = String(fd.get('cautions') || '').split('\n').map((s) => s.trim()).filter(Boolean);
 
-    // 삭제 표시된 그룹 제거
     const removed = [...form.querySelectorAll('.existing.removed')].map((el) => el.dataset.group);
     if (removed.length) {
       line.groups = line.groups.filter((g) => !removed.includes(g.id));
       line.items = line.items.filter((i) => !removed.includes(i.groupId));
     }
 
-    // 새 리워드
     for (const d of form.querySelectorAll('.reward-draft')) {
       const name = d.querySelector('[name="r-name"]').value.trim();
       const amount = Number(d.querySelector('[name="r-amount"]').value) || 0;
       const month = d.querySelector('[name="r-month"]').value || line.openMonth || nowYM();
-      const repeat = Math.min(60, Math.max(1, parseInt(d.querySelector('[name="r-repeat"]').value, 10) || 1));
+      const repeatInput = d.querySelector('[name="r-repeat"]');
+      const repeat = repeatInput.value.trim() === '' ? 1 : Number(repeatInput.value);
       const desc = d.querySelector('[name="r-desc"]').value.trim();
       const cash = d.querySelector('[name="r-cash"]').checked;
       const uncertain = d.querySelector('[name="r-unsure"]').checked;
-      if (!name && !amount) continue; // 빈 항목 무시
+      if (!name && !amount) continue;
       if (!name || !amount) { toast('리워드 이름과 금액을 입력하세요'); return; }
+      if (!Number.isInteger(repeat) || repeat < 1 || repeat > MAX_REPEAT) {
+        toast(`반복 개월 수는 1~${MAX_REPEAT} 사이 정수로 입력하세요`); repeatInput.focus(); return;
+      }
       const gid = 'g-' + uid();
       line.groups.push({
         id: gid, name, desc, cash, uncertain, excludable: uncertain, excluded: false,
@@ -563,7 +484,6 @@
     location.hash = '#/line/' + encodeURIComponent(line.id);
   }
 
-  /* ---------- backup ---------- */
   function exportData() {
     const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -578,38 +498,39 @@
     input.onchange = async () => {
       const f = input.files && input.files[0];
       if (!f) return;
-      try {
-        const s = JSON.parse(await f.text());
-        if (!s || !Array.isArray(s.lines)) throw new Error('bad');
-        if (!confirm('현재 데이터를 백업 파일로 덮어쓸까요?')) return;
-        migrate(s);
-        state = s; save(); render(); toast('가져오기 완료');
-      } catch (e) { toast('올바른 백업 파일이 아니에요'); }
+      const raw = await f.text();
+      let parsed;
+      try { parsed = parseState(raw); } catch (e) { toast('올바른 백업 파일이 아니에요'); return; }
+      if (!confirm('현재 데이터를 백업 파일로 덮어쓸까요?')) return;
+      state = commit(raw, parsed); render(); toast('가져오기 완료');
     };
     input.click();
   }
 
-  /* ---------- router ---------- */
+  function route() {
+    const [name = '', id] = (location.hash || '').replace(/^#\/?/, '').split('/').map(decodeURIComponent);
+    return { name, id: id || null };
+  }
+
   let lastRoute = '';
   function render() {
     const h = location.hash || '#/';
-    const parts = h.replace(/^#\/?/, '').split('/').map(decodeURIComponent);
+    const { name, id } = route();
     if (h !== lastRoute) { showAllSchedule = false; }
-    if (parts[0] === 'line' && parts[1]) viewDetail(parts[1]);
-    else if (parts[0] === 'new') viewForm(null);
-    else if (parts[0] === 'edit' && parts[1]) viewForm(parts[1]);
+    if (name === 'line' && id) viewDetail(id);
+    else if (name === 'new') viewForm(null);
+    else if (name === 'edit' && id) viewForm(id);
     else viewHome();
     if (h !== lastRoute) window.scrollTo(0, 0);
     lastRoute = h;
   }
-  const currentLineId = () => { const m = (location.hash || '').match(/^#\/line\/(.+)$/); return m ? decodeURIComponent(m[1]) : null; };
 
-  /* ---------- events ---------- */
   app.addEventListener('change', (e) => {
     const el = e.target;
     const act = el.dataset && el.dataset.act;
     if (!act) return;
-    const line = findLine(currentLineId());
+    const r = route();
+    const line = r.name === 'line' && findLine(r.id);
     if (!line) return;
     if (act === 'recv' || act === 'cash') {
       const it = line.items.find((i) => i.id === el.dataset.item);
@@ -664,17 +585,22 @@
   app.addEventListener('submit', (e) => {
     if (e.target.id !== 'lineForm') return;
     e.preventDefault();
-    const m = (location.hash || '').match(/^#\/edit\/(.+)$/);
-    submitForm(e.target, m ? decodeURIComponent(m[1]) : null);
+    const r = route();
+    submitForm(e.target, r.name === 'edit' ? r.id : null);
   });
 
   backBtn.addEventListener('click', () => {
-    const m = (location.hash || '').match(/^#\/edit\/(.+)$/);
-    location.hash = m ? '#/line/' + m[1] : '#/';
+    const r = route();
+    location.hash = r.name === 'edit' ? '#/line/' + encodeURIComponent(r.id) : '#/';
   });
 
-  // 다른 탭에서 변경 시 동기화
-  window.addEventListener('storage', (e) => { if (e.key === KEY && e.newValue) { try { state = JSON.parse(e.newValue); render(); } catch (_) {} } });
+  window.addEventListener('storage', (e) => {
+    if (e.key !== KEY || !e.newValue) return;
+    let parsed;
+    try { parsed = parseState(e.newValue); } catch (err) { toast('다른 탭에서 저장한 데이터를 읽지 못했어요'); return; }
+    state = commit(e.newValue, parsed);
+    render();
+  });
   window.addEventListener('hashchange', render);
   render();
 
