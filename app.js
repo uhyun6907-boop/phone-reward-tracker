@@ -3,7 +3,7 @@
   'use strict';
 
   const KEY = 'phone-reward-tracker-v1';
-  const VERSION = 2;
+  const VERSION = 3;
   const HINT_KEY = 'phone-reward-tracker-hint-dismissed';
   const app = document.getElementById('app');
   const titleEl = document.getElementById('title');
@@ -79,10 +79,62 @@
     };
   }
 
+  // 쉐이크모바일 (블프 전야제 이벤트, 체감가 0원) — 요금·지급 시기는 개통 후 편집에서 확인/수정
+  const SHAKE_LINE_ID = 'line-2-shake';
+  const SHAKE_START = '2026-12';
+  const SHAKE_NPAY_COUNT = 7;
+  function seedLine2() {
+    const groups = [
+      { id: 'g-shake-npay', name: 'Npay 매월 5,000P', summary: `월 5,000원 × ${SHAKE_NPAY_COUNT}회 (2026.12 ~ 2027.06)`,
+        desc: '요금제 가입일부터 30일 사용 후 31일차에 MMS 발송, 이후 30일마다 1회 (평생). 수신 후 30일 안에 네이버 앱/웹에서 등록해야 함 — 미등록 시 소멸.',
+        uncertain: false, cash: false, excludable: false, excluded: false },
+      { id: 'g-shake-open', name: '바로유심 상품권', summary: '10,000원 × 2회 (2027.03 · 2027.06 월말)',
+        desc: 'KT바로배송/바로유심으로 2026.11.30까지 개통 시 — 1차 개통 M+4개월차, 2차 M+7개월차 월말 MMS. 3대 마트 또는 네이버페이 상품권, 수신 후 30일 안에 등록.',
+        uncertain: true, cash: false, excludable: true, excluded: false }
+    ];
+    const items = [];
+    for (let i = 0; i < SHAKE_NPAY_COUNT; i++) {
+      items.push({ id: uid(), groupId: 'g-shake-npay', name: `Npay 5,000P ${i + 1}/${SHAKE_NPAY_COUNT}`, amount: 5000,
+        month: addMonths(SHAKE_START, i), when: '개통 31일차부터 30일마다 (MMS)', received: false });
+    }
+    items.push({ id: uid(), groupId: 'g-shake-open', name: '바로유심 상품권 1차', amount: 10000, month: '2027-03',
+      when: '개통 M+4개월차 월말', received: false });
+    items.push({ id: uid(), groupId: 'g-shake-open', name: '바로유심 상품권 2차', amount: 10000, month: '2027-06',
+      when: '개통 M+7개월차 월말', received: false });
+    return {
+      id: SHAKE_LINE_ID,
+      number: '010-5000-6907',
+      carrier: '쉐이크모바일 (KT망)',
+      openMonth: '2026-11',
+      openNote: '블프 전야제 이벤트 (체감가 0원)',
+      plan: '쉐이크딜 LTE 100GB+_Npay 5,000원 (120GB+5Mbps 무제한)',
+      fee: 0,
+      feeDiscount: 0,
+      memo: '정가 47,300원. 실제 청구 요금은 개통 후 편집에서 입력. 팝테일 월 1,000원 할인(24개월): 개통 1일 후 코드 문자 → 개통 익익월 말일까지 팝테일 앱에서 등록. 데이터쿠폰 20GB: M+3·M+6·M+9개월차 10일 이내. SOLO 결합 시 월 20GB.',
+      cautions: [
+        '리워드 다 받을 때까지(2027.06) 요금제 변경·정지·해지·명의변경 금지',
+        '쿠폰 MMS 받으면 30일 안에 등록 (미등록 시 소멸, 재발급 불가)',
+        '팝테일 프로모션 코드는 개통 익익월 말일(2027.01.31)까지 등록',
+        '7개월 할인 이후 요금 확인 · 실제 월 요금은 편집에서 입력'
+      ],
+      groups,
+      items
+    };
+  }
+
   /* ---------- migration ---------- */
-  // 기본 그룹(g-membership / g-npay / g-honey)만 새 기본값으로 갱신. 사용자 회선·그룹·체크 기록은 유지.
+  // v2: 기본 그룹(g-membership / g-npay / g-honey)만 새 기본값으로 갱신. 사용자 회선·그룹·체크 기록은 유지.
+  // v3: 쉐이크모바일 회선이 없으면 추가.
   function migrate(s) {
-    if ((Number(s.version) || 1) >= VERSION) return false;
+    const from = Number(s.version) || 1;
+    if (from >= VERSION) return false;
+    if (from < 2) migrateV2(s);
+    if (from < 3 && !s.lines.some((l) => l && l.id === SHAKE_LINE_ID)) s.lines.push(seedLine2());
+    s.version = VERSION;
+    return true;
+  }
+
+  function migrateV2(s) {
     const defs = Object.fromEntries(seedGroups().map((g) => [g.id, g]));
     for (const line of s.lines) {
       if (!line || !Array.isArray(line.groups) || !Array.isArray(line.items)) continue;
@@ -112,8 +164,6 @@
         // g-npay: 변경 없음
       }
     }
-    s.version = VERSION;
-    return true;
   }
 
   /* ---------- storage ---------- */
@@ -133,7 +183,7 @@
       // 손상된 데이터는 지우지 않고 백업해 둠
       localStorage.setItem(KEY + '-corrupt-' + Date.now(), raw);
     }
-    const s = { version: VERSION, lines: [seedLine1()] };
+    const s = { version: VERSION, lines: [seedLine1(), seedLine2()] };
     localStorage.setItem(KEY, JSON.stringify(s));
     return s;
   }
