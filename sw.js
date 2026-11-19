@@ -1,5 +1,5 @@
 /* 휴대폰 리워드 트래커 — service worker (상대 경로만 사용) */
-const CACHE = 'prt-shell-v2';
+const CACHE = 'prt-shell-v3';
 const SHELL = [
   './',
   './index.html',
