@@ -3,7 +3,7 @@
   'use strict';
 
   const KEY = 'phone-reward-tracker-v1';
-  const VERSION = 3;
+  const VERSION = 4;
   const HINT_KEY = 'phone-reward-tracker-hint-dismissed';
   const app = document.getElementById('app');
   const titleEl = document.getElementById('title');
@@ -27,6 +27,8 @@
   };
   const ymLabel = (ym) => (ym ? esc(String(ym).replace('-', '.')) : '-');
   const ymKo = (ym) => { if (!ym) return '-'; const [y, m] = String(ym).split('-'); return `${esc(y)}년 ${Number(m)}월`; };
+  const dateKo = (d) => { const [y, m, day] = String(d).split('-'); return `${esc(y)}년 ${Number(m)}월 ${Number(day)}일`; };
+  const openLabel = (line) => (line.openDate ? dateKo(line.openDate) : ymKo(line.openMonth));
   const nowYM = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; };
   const pct = (a, b) => (b > 0 ? Math.min(100, Math.round((a / b) * 100)) : 0);
 
@@ -51,6 +53,7 @@
     const from = Number(s.version) || 1;
     if (from >= VERSION) return false;
     if (from < 2) migrateV2(s);
+    if (from < 4) migrateV4(s);
     s.version = VERSION;
     return true;
   }
@@ -81,6 +84,39 @@
         }
       }
     }
+  }
+
+  const SHAKE_V4_CAUTIONS = [
+    '최소 유지 6개월 15일 → 2027.06.05까지 유지 (요금제 변경·정지·해지·명의변경 금지)',
+    '번호이동 목표 기간: 2027.06.06 ~ 2027.06.20 (2027.06.06부터 번호이동 가능)',
+    '2027.06.21(개통 7개월) 쉐이크딜 할인 종료 → 정상가 47,300원 청구 가능 · 반드시 그 전에 번호이동',
+    '바로유심 상품권 2차(2027.06 월말)는 6월 중순 번호이동으로 포기 예정 — 합계에서 제외'
+  ];
+  const SHAKE_V3_SUPERSEDED_CAUTIONS = [
+    '리워드 다 받을 때까지(2027.06) 요금제 변경·정지·해지·명의변경 금지',
+    '7개월 할인 이후 요금 확인 · 실제 월 요금은 편집에서 입력'
+  ];
+
+  function migrateV4(s) {
+    const line = s.lines.find((l) => l.id === 'line-2-shake');
+    if (!line) return;
+    line.openDate = '2026-11-21';
+    line.openMonth = '2026-11';
+    line.cautions = [...SHAKE_V4_CAUTIONS,
+      ...(line.cautions || []).filter((c) => !SHAKE_V3_SUPERSEDED_CAUTIONS.includes(c) && !SHAKE_V4_CAUTIONS.includes(c))];
+
+    const voucherGroup = line.groups.find((g) => g.id === 'g-shake-open');
+    const june = line.items.find((i) => i.groupId === 'g-shake-open' && i.month === '2027-06');
+    if (!voucherGroup || !june) return;
+    voucherGroup.summary = '10,000원 · 2027.03 월말';
+    voucherGroup.desc = 'KT바로배송/바로유심으로 2026.11.30까지 개통 시 — 개통 M+4개월차 월말 MMS. 3대 마트 또는 네이버페이 상품권, 수신 후 30일 안에 등록. (2차는 6월 중순 번호이동으로 포기 예정)';
+    const forfeitId = 'g-shake-open-2';
+    june.groupId = forfeitId;
+    line.groups.splice(line.groups.indexOf(voucherGroup) + 1, 0, {
+      id: forfeitId, name: '바로유심 상품권 2차', summary: '10,000원 · 2027.06 월말 — 포기 예정',
+      desc: '개통 M+7개월차(2027.06 월말) MMS로 지급 예정이었지만, 2027.06.21 정상가 전환 전에 번호이동(2027.06.06 ~ 06.20)하므로 받지 못함.',
+      uncertain: voucherGroup.uncertain, cash: false, excludable: true, excluded: true, excludedLabel: '포기 예정'
+    });
   }
 
   const isObjWithId = (x) => x && typeof x === 'object' && typeof x.id === 'string';
@@ -198,7 +234,7 @@
             <div class="badge-num">${idx + 1}</div>
             <div>
               <div class="num">${esc(l.number || '번호 미입력')}</div>
-              <div class="carrier">${esc(l.carrier || '통신사 미입력')}${l.openMonth ? ` · ${ymKo(l.openMonth)} 개통` : ''}</div>
+              <div class="carrier">${esc(l.carrier || '통신사 미입력')}${l.openMonth ? ` · ${openLabel(l)} 개통` : ''}</div>
             </div>
             ${chevron}
           </div>
@@ -289,22 +325,24 @@
           </div>
         </div>`).join('');
       const firstMonth = its.reduce((m, i) => (i.month && (!m || i.month < m) ? i.month : m), '');
+      const excludeTitle = g.excludedLabel ? `${esc(g.excludedLabel)} → ${esc(g.name)} 제외`
+        : `${firstMonth ? `${ymKo(firstMonth)} 첫 입금이 없으면 → ` : ''}${esc(g.name)} 전체 제외`;
       const exclude = g.excludable ? `
         <label class="switch-row">
-          <p><b>${firstMonth ? `${ymKo(firstMonth)} 첫 입금이 없으면 → ` : ''}${esc(g.name)} 전체 제외</b>켜면 합계·월별 일정에서 빠집니다.</p>
+          <p><b>${excludeTitle}</b>켜면 합계·월별 일정에서 빠집니다.</p>
           <input class="switch" type="checkbox" data-act="exclude" data-group="${esc(g.id)}" ${g.excluded ? 'checked' : ''}>
         </label>` : '';
       return `
         <details class="group ${g.excluded ? 'excluded' : ''}" data-key="${esc(key)}" ${isOpen ? 'open' : ''}>
           <summary>
-            <div class="gtitle"><b>${esc(g.name)}${g.uncertain ? '<span class="tag unsure">불확실</span>' : ''}${g.cash ? '<span class="tag cash">현금전환</span>' : ''}</b>
+            <div class="gtitle"><b>${esc(g.name)}${g.uncertain ? '<span class="tag unsure">불확실</span>' : ''}${g.cash ? '<span class="tag cash">현금전환</span>' : ''}${g.excluded && g.excludedLabel ? `<span class="tag forfeit">${esc(g.excludedLabel)}</span>` : ''}</b>
               <span>${esc(g.summary || '')}</span></div>
             <div class="gsum"><b>${won(gGot)}</b>/ ${won(gTotal)}</div>
           </summary>
           <div class="gbody">
             ${g.desc ? `<div class="howto">${esc(g.desc)}</div>` : ''}
             ${exclude}
-            ${g.excluded ? '<div class="note-excluded">제외됨 — 합계와 월별 일정에 포함되지 않아요.</div>' : ''}
+            ${g.excluded ? `<div class="note-excluded">${esc(g.excludedLabel || '제외됨')} — 합계와 월별 일정에 포함되지 않아요.</div>` : ''}
             ${itemsHtml}
           </div>
         </details>`;
@@ -319,7 +357,7 @@
         <dl class="info-grid">
           <dt>번호</dt><dd>${esc(line.number || '-')}</dd>
           <dt>통신사</dt><dd>${esc(line.carrier || '-')}</dd>
-          <dt>개통</dt><dd>${ymKo(line.openMonth)} 개통${line.openNote ? ` (${esc(line.openNote)})` : ''}</dd>
+          <dt>개통</dt><dd>${openLabel(line)} 개통${line.openNote ? ` (${esc(line.openNote)})` : ''}</dd>
           <dt>요금제</dt><dd>${esc(line.plan || '-')}</dd>
           <dt>월 요금</dt><dd><span class="fee-main">${line.fee ? won(line.fee) : '-'}</span>${line.feeDiscount ? `<span class="fee-alt">추가회선 할인 시 ${won(line.feeDiscount)}</span>` : ''}</dd>
         </dl>
@@ -383,7 +421,7 @@
     if (id && !line) { location.hash = '#/'; return; }
     titleEl.textContent = line ? '회선 편집' : '회선 추가';
     backBtn.hidden = false;
-    const v = line || { number: '', carrier: '', openMonth: nowYM(), openNote: '', plan: '', fee: '', feeDiscount: '', memo: '', cautions: [], groups: [], items: [] };
+    const v = line || { number: '', carrier: '', openMonth: nowYM(), openDate: '', openNote: '', plan: '', fee: '', feeDiscount: '', memo: '', cautions: [], groups: [], items: [] };
 
     const existing = (v.groups || []).map((g) => {
       const its = v.items.filter((i) => i.groupId === g.id);
@@ -402,8 +440,9 @@
           <label class="field"><span>통신사</span><input name="carrier" placeholder="예: ○○모바일" value="${esc(v.carrier)}"></label>
           <div class="grid2">
             <label class="field"><span>개통월</span><input name="openMonth" type="month" value="${esc(v.openMonth)}"></label>
-            <label class="field"><span>개통 메모</span><input name="openNote" placeholder="예: 이벤트 가입" value="${esc(v.openNote)}"></label>
+            <label class="field"><span>개통일 (선택, 개통월보다 우선)</span><input name="openDate" type="date" value="${esc(v.openDate)}"></label>
           </div>
+          <label class="field"><span>개통 메모</span><input name="openNote" placeholder="예: 이벤트 가입" value="${esc(v.openNote)}"></label>
           <label class="field"><span>요금제</span><input name="plan" placeholder="예: LTE 10GB" value="${esc(v.plan)}"></label>
           <div class="grid2">
             <label class="field"><span>월 요금(원)</span><input name="fee" type="number" inputmode="numeric" min="0" value="${esc(v.fee)}"></label>
@@ -438,7 +477,8 @@
     const line = existing ? existing : { id: uid(), groups: [], items: [] };
     line.number = number;
     line.carrier = String(fd.get('carrier') || '').trim();
-    line.openMonth = String(fd.get('openMonth') || '');
+    line.openDate = String(fd.get('openDate') || '');
+    line.openMonth = line.openDate ? line.openDate.slice(0, 7) : String(fd.get('openMonth') || '');
     line.openNote = String(fd.get('openNote') || '').trim();
     line.plan = String(fd.get('plan') || '').trim();
     line.fee = Number(fd.get('fee')) || 0;
